@@ -273,7 +273,24 @@ Users can always download the latest APK directly from Releases without needing 
 
 ---
 
-## 📄 License
+## � Download the App
+
+> **The latest release APK is automatically built and published via GitHub Actions on every push to `main`.**
+
+[![Download APK](https://img.shields.io/badge/Download-Latest%20APK-02569B?style=for-the-badge&logo=android&logoColor=white)](https://github.com/anupamkushwaha85/emergency108/releases/latest)
+
+### Steps to install on Android:
+1. Open the link above on your Android phone (or scan a QR code pointing to it)
+2. Tap the `app-release.apk` file to download it
+3. Open the downloaded file and tap **Install**
+4. If prompted, enable **"Install from unknown sources"** (Settings → Apps → Special app access → Install unknown apps)
+5. Done — the app is installed!
+
+> **Note:** This is a direct APK install (not via Play Store). You may need to allow installs from your browser app.
+
+---
+
+## �📄 License
 
 MIT — see [LICENSE](LICENSE) for details.
 
