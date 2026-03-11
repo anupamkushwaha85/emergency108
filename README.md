@@ -72,9 +72,44 @@ The app connects to the [Emergency108 Spring Boot backend](https://github.com/an
 - Foreground notifications show as in-app `SnackBar` with a `VIEW` action
 
 ### 🤝 Helping Hand — Community First Response
-- When an emergency is created, **nearby PUBLIC users** are notified via FCM
-- They can choose to rush to the scene and provide immediate assistance before the ambulance arrives
-- Helping hand requests are streamed in real time
+- When an emergency is created **for SELF**, **nearby PUBLIC users within 3 km** are instantly notified via FCM — "🚨 Emergency Nearby!"
+- If the emergency is created **for someone else** (bystander calling for a stranger), the Helping Hand notification is **skipped entirely** — respecting victim privacy
+- Helpers see approximate location, distance, and emergency type — no personal details of the victim are exposed
+- They can choose to rush to the scene and provide immediate first aid before the ambulance arrives
+- Helpers can view all nearby active emergencies via a live feed in the app
+
+### 🗺️ Live Turn-by-Turn Directions with Exact Distance
+- During active tracking, the Google Maps view shows a **live polyline route** from the ambulance's real-time location to the patient
+- The **exact road distance** (km/m) and **estimated time of arrival (ETA)** are displayed and updated continuously as the ambulance moves
+- Route is recalculated intelligently using debouncing — only requests a new route when the ambulance has moved enough to warrant an update, preventing excessive Maps API calls
+- Patient and ambulance markers update smoothly on every GPS ping from the driver
+
+### 📞 Driver Can Call the Patient
+- After accepting an emergency, the driver sees the patient's phone number and can **call them directly with one tap** from inside the app
+- Useful for coordinating exact pickup location, floor number, gate access, etc.
+- Uses `url_launcher` to open the native phone dialer — no in-app calling infra needed
+
+### 🌍 Open in Google Maps / Native Navigation
+- Both the **driver and the patient** can tap a button to open the emergency location in the **native Google Maps app** for full turn-by-turn navigation
+- Driver can use Google Maps navigation to drive to the patient, then to the hospital
+- Patient can share or view their own pinned location in Google Maps as confirmation
+
+### 🚫 Accept is Final — No Rejection After Accepting
+- Once a driver taps **Accept** on an emergency assignment, the action is **irreversible**
+- The driver cannot reject the emergency after accepting — this prevents drivers from abandoning mid-route
+- The only way to end the assignment is to complete the mission by marking the patient picked up and delivering them to the hospital
+
+### 🔄 Auto-Reassignment to Next Nearest Driver
+- If a driver **rejects** the assignment or **does not respond within the timeout window**, the emergency is automatically reassigned to the **next nearest available driver**
+- The `AssignmentTimeoutScheduler` runs in the background and triggers reassignment without any manual intervention
+- This cascades through drivers by distance until one accepts — ensuring no emergency goes unattended
+- Drivers who time out or reject too often can be flagged by the system
+
+### 🏥 Nearest Hospital Automatically Assigned
+- When an ambulance is dispatched, the backend uses the **Haversine formula** to find and assign the **nearest hospital** to the emergency location
+- The hospital is selected from the registered hospital database using a native MySQL geospatial query
+- The assigned hospital is shown to both the driver and the admin panel
+- The driver's mission is only marked complete when they arrive at the assigned hospital (within 100 m proximity check)
 
 ### 🤖 AI Doctor — First Aid Guidance
 - Built-in **AI First Aid screen** accessible during an active emergency
