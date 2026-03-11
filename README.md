@@ -235,6 +235,19 @@ The APK will be at `build/app/outputs/flutter-apk/app-release.apk`.
 
 ---
 
+## 🧪 Test Credentials
+
+When using the app with the deployed backend, use these static OTPs to log in:
+
+| Role | Phone Number | OTP |
+|---|---|---|
+| 👤 Citizen (PUBLIC) | Any number | `123456` |
+| 🚑 Driver | Any number | `654321` |
+
+> **Why static OTPs?** Real SMS OTP delivery requires Twilio (or similar). Twilio's free tier requires a credit card to activate, which I don't have access to. The OTP system is fully implemented on the backend — swapping in a real SMS provider (Twilio / AWS SNS) requires only a one-line change in `NotificationService`. For now, these static OTPs let anyone test the full app flow without any setup.
+
+---
+
 ## 📦 Automated APK Releases (GitHub Actions)
 
 Every push to `main` automatically:
