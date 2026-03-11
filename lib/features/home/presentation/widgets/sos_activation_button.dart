@@ -1,0 +1,141 @@
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../../../../core/theme/app_theme.dart';
+
+class SosActivationButton extends StatefulWidget {
+  final VoidCallback onEmergencyTriggered;
+
+  const SosActivationButton({
+    super.key,
+    required this.onEmergencyTriggered,
+  });
+
+  @override
+  State<SosActivationButton> createState() => _SosActivationButtonState();
+}
+
+class _SosActivationButtonState extends State<SosActivationButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _holdController;
+
+  @override
+  void initState() {
+    super.initState();
+    _holdController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3), // 3s hold time
+    );
+
+    _holdController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        widget.onEmergencyTriggered();
+        _holdController.reset();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _holdController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            // Circular Progress Arc
+            SizedBox(
+              width: 230,
+              height: 230,
+              child: AnimatedBuilder(
+                animation: _holdController,
+                builder: (context, child) {
+                  return CircularProgressIndicator(
+                    value: _holdController.value,
+                    strokeWidth: 8,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryRed),
+                    backgroundColor: AppTheme.primaryRed.withOpacity(0.1),
+                  );
+                },
+              ),
+            ),
+
+            // The Button itself
+            GestureDetector(
+              onTapDown: (_) => _holdController.forward(),
+              onTapUp: (_) {
+                if (_holdController.status != AnimationStatus.completed) {
+                  _holdController.reverse();
+                }
+              },
+              onTapCancel: () => _holdController.reverse(),
+              child: Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFFE6393C), // Lighter red
+                      Color(0xFF990000), // Dark red
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.4),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'SOS',
+                        style: GoogleFonts.inter(
+                          fontSize: 48,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          letterSpacing: 2.0,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'HOLD 3s',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white70,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 30),
+        Text(
+          'Hold Button for Emergency',
+          style: GoogleFonts.inter(
+            color: Colors.black54,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
