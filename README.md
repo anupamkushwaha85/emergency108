@@ -276,3 +276,21 @@ Users can always download the latest APK directly from Releases without needing 
 ## 📄 License
 
 MIT — see [LICENSE](LICENSE) for details.
+
+---
+
+## 📬 Contact
+
+I am a B.Tech CSE student passionate about building scalable mobile and backend applications.
+
+[![Email](https://img.shields.io/badge/Email-anupamkushwaha639%40gmail.com-red?style=flat-square&logo=gmail)](mailto:anupamkushwaha639@gmail.com)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-anupamkushwaha85-blue?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/anupamkushwaha85/)
+[![Portfolio](https://img.shields.io/badge/Portfolio-anupamkushwaha.me-brightgreen?style=flat-square&logo=google-chrome&logoColor=white)](https://anupamkushwaha.me)
+
+> For more info on the full system, see the [Backend README](https://github.com/anupamkushwaha85/emergency-dispatch-system#readme) and the [Admin Panel README](https://github.com/anupamkushwaha85/emergency-dispatch-admin-panel#readme).
+
+---
+
+### Built with ❤️ by Anupam Kushwaha
+
+⭐ **If you find this project helpful, please give it a star!**
