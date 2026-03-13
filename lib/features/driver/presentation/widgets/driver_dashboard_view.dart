@@ -25,20 +25,35 @@ class DriverDashboardView extends StatefulWidget {
 
 class _DriverDashboardViewState extends State<DriverDashboardView> {
   final Completer<GoogleMapController> _mapController = Completer();
+  bool _hasFocusedDriverOnce = false;
+
+  Future<void> _focusOnDriver(Position position, {bool forceZoom = false}) async {
+    if (!_mapController.isCompleted) return;
+    final controller = await _mapController.future;
+    await controller.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: LatLng(position.latitude, position.longitude),
+          zoom: forceZoom ? 17.0 : 16.2,
+          tilt: 35,
+          bearing: 0,
+        ),
+      ),
+    );
+  }
 
   @override
   void didUpdateWidget(DriverDashboardView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Pan map to new driver position when GPS updates
+    // Quickly focus with zoom when first GPS fix arrives, then keep smooth updates.
     if (widget.currentPosition != null &&
         widget.currentPosition != oldWidget.currentPosition &&
         _mapController.isCompleted) {
-      _mapController.future.then((c) => c.animateCamera(
-            CameraUpdate.newLatLng(LatLng(
-              widget.currentPosition!.latitude,
-              widget.currentPosition!.longitude,
-            )),
-          ));
+      _focusOnDriver(
+        widget.currentPosition!,
+        forceZoom: oldWidget.currentPosition == null || !_hasFocusedDriverOnce,
+      );
+      _hasFocusedDriverOnce = true;
     }
   }
 
@@ -54,7 +69,7 @@ class _DriverDashboardViewState extends State<DriverDashboardView> {
   Widget _buildOnlineView() {
     final pos = widget.currentPosition;
     final initialCam = pos != null
-        ? CameraPosition(target: LatLng(pos.latitude, pos.longitude), zoom: 13)
+      ? CameraPosition(target: LatLng(pos.latitude, pos.longitude), zoom: 16.2)
         : const CameraPosition(target: LatLng(20.5937, 78.9629), zoom: 5); // India
 
     final driverMarkers = pos != null
@@ -82,6 +97,15 @@ class _DriverDashboardViewState extends State<DriverDashboardView> {
           markers: driverMarkers,
           onMapCreated: (c) {
             if (!_mapController.isCompleted) _mapController.complete(c);
+            if (pos != null) {
+              // Ensure driver gets a close map focus immediately on entering online mode.
+              Future.delayed(const Duration(milliseconds: 250), () {
+                if (mounted) {
+                  _focusOnDriver(pos, forceZoom: true);
+                  _hasFocusedDriverOnce = true;
+                }
+              });
+            }
           },
         ),
 

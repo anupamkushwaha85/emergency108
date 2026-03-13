@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -379,21 +380,14 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
   }
 
   Future<void> _goOnline() async {
-    // 1. Check Permissions
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-         throw "Location permission required to go online";
-      }
-    }
-    if (permission == LocationPermission.deniedForever) {
-         throw "Location permission denied forever. Enable in settings.";
-    }
+    // Flow required by product: confirmation -> internet/location validation -> online.
+    final isReady = await _validateOnlinePrerequisites();
+    if (!isReady) return;
 
-    // 1b. Check if Service is Enabled
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      throw "Location services are disabled. Please turn on GPS.";
+    // Prime map position quickly so camera can zoom to driver within ~2s.
+    final fastPosition = await _getQuickPosition();
+    if (fastPosition != null && mounted) {
+      setState(() => _currentPosition = fastPosition);
     }
 
     // 2. Start Shift — auto-detect ambulance assigned to this driver
@@ -408,6 +402,148 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
     _startLocationUpdates();
     _checkMissedAssignments();
     _startServiceStatusListener();
+  }
+
+  Future<bool> _validateOnlinePrerequisites() async {
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) {
+      if (!mounted) return false;
+      await _showSimpleRequirementDialog(
+        title: 'No Internet Connection',
+        message:
+            'You are offline. Please turn on mobile data or Wi-Fi, then try again.',
+      );
+      return false;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.deniedForever) {
+      if (!mounted) return false;
+      final openSettings = await _showSimpleRequirementDialog(
+        title: 'Location Permission Needed',
+        message:
+            'Location permission is permanently denied. Enable Location permission from App Settings to go online.',
+        actionText: 'Open App Settings',
+      );
+      if (openSettings == true) {
+        await Geolocator.openAppSettings();
+      }
+      return false;
+    }
+
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (!mounted) return false;
+        await _showSimpleRequirementDialog(
+          title: 'Location Permission Denied',
+          message:
+              'Please select "Allow while using the app" to go online and receive missions.',
+        );
+        return false;
+      }
+      if (permission == LocationPermission.deniedForever) {
+        if (!mounted) return false;
+        final openSettings = await _showSimpleRequirementDialog(
+          title: 'Location Permission Needed',
+          message:
+              'Location permission is permanently denied. Enable it from App Settings to continue.',
+          actionText: 'Open App Settings',
+        );
+        if (openSettings == true) {
+          await Geolocator.openAppSettings();
+        }
+        return false;
+      }
+    }
+
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (!mounted) return false;
+      final openLocation = await _showSimpleRequirementDialog(
+        title: 'Turn On Location Service',
+        message:
+            'GPS is currently off. Tap "Turn On Location" and enable device location to go online.',
+        actionText: 'Turn On Location',
+      );
+
+      if (openLocation == true) {
+        await Geolocator.openLocationSettings();
+        await Future.delayed(const Duration(milliseconds: 1200));
+      }
+
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Location is still off. Please enable GPS and try again.'),
+              backgroundColor: AppPallete.error,
+            ),
+          );
+        }
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  Future<bool> _hasInternetConnection() async {
+    try {
+      final response = await Dio().get(
+        'https://clients3.google.com/generate_204',
+        options: Options(
+          sendTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 3),
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      return response.statusCode != null && response.statusCode! < 400;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Position?> _getQuickPosition() async {
+    try {
+      final quickPosition = await Future.any<Position?>([
+        Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+        ),
+        Future<Position?>.delayed(const Duration(seconds: 2), () => null),
+      ]);
+      return quickPosition ?? Geolocator.getLastKnownPosition();
+    } catch (_) {
+      return Geolocator.getLastKnownPosition();
+    }
+  }
+
+  Future<bool?> _showSimpleRequirementDialog({
+    required String title,
+    required String message,
+    String actionText = 'OK',
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppPallete.primary,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(actionText),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _checkMissedAssignments() async {
