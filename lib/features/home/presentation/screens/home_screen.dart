@@ -62,6 +62,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   bool _hasAutoCalled = false;
   bool _wasAutoDispatchTriggered = false;
   bool _isSelfEmergency = false;
+  int _helpingHandRefreshVersion = 0;
   StompClient? _trackingStompClient;
   // Location service stream — automatically cancels emergency if GPS is disabled
   StreamSubscription<ServiceStatus>? _locationServiceSubscription;
@@ -145,13 +146,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                  onPressed: () {
                     // Navigate based on data, e.g. helping hand tab
                     if (message.data['type'] == 'helping_hand') {
-                        setState(() => _currentIndex = 2);
+                        setState(() {
+                          _currentIndex = 2;
+                          _helpingHandRefreshVersion++;
+                        });
                     }
                  },
                ),
              ),
            );
         }
+    });
+
+    // Handle notification tap from background/terminated state for public users.
+    fcmService.setupNotificationTapHandler((data) {
+      if (!mounted) return;
+      if (data['type'] == 'helping_hand') {
+        setState(() {
+          _currentIndex = 2;
+          _helpingHandRefreshVersion++;
+        });
+      }
     });
     
     // Only PUBLIC users participate as helpers - Push Notification Only
@@ -1039,7 +1054,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                     AiFirstAidScreen(emergencyId: _emergencyId), 
                     
                     // TAB 2: Helping Hand
-                    const HelpingHandScreen(),
+                    HelpingHandScreen(key: ValueKey('helping_hand_$_helpingHandRefreshVersion')),
                   ],
                 ),
               ),
