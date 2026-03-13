@@ -68,7 +68,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     super.initState();
     _loadContacts();
     _checkProfileStatus();
-    _startHelpingHandService();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_startHelpingHandService());
+    });
     // Background pulsing animation controller if needed for other things, 
     // or we can remove if it was only for the old button background.
     // Keeping it for potential background effects or safe removal later.
@@ -100,13 +102,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   // Stream subscription for foreground notifications
   StreamSubscription? _fcmSubscription;
 
-  void _startHelpingHandService() async {
+  Future<void> _startHelpingHandService() async {
     final prefs = await SharedPreferences.getInstance();
     final role = prefs.getString('user_role');
     
     // Initialize FCM for all users to get foreground alerts
     final fcmService = FCMNotificationService();
-    final fcmToken = await fcmService.initialize();
+    final fcmToken = await fcmService.initialize().timeout(
+      const Duration(seconds: 6),
+      onTimeout: () {
+        debugPrint('⚠️ FCM init timed out, continuing startup without token');
+        return null;
+      },
+    );
     fcmService.setupForegroundHandler();
 
     // Register FCM token with backend so server can push notifications to this device

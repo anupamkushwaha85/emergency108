@@ -42,100 +42,105 @@ class _SosActivationButtonState extends State<SosActivationButton>
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            // Circular Progress Arc
-            SizedBox(
-              width: 230,
-              height: 230,
-              child: AnimatedBuilder(
-                animation: _holdController,
-                builder: (context, child) {
-                  return CircularProgressIndicator(
-                    value: _holdController.value,
-                    strokeWidth: 8,
-                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryRed),
-                    backgroundColor: AppTheme.primaryRed.withOpacity(0.1),
-                  );
+    return SizedBox.expand(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Keep the interactive SOS circle exactly at screen center.
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              SizedBox(
+                width: 230,
+                height: 230,
+                child: AnimatedBuilder(
+                  animation: _holdController,
+                  builder: (context, child) {
+                    return CircularProgressIndicator(
+                      value: _holdController.value,
+                      strokeWidth: 8,
+                      valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryRed),
+                      backgroundColor: AppTheme.primaryRed.withValues(alpha: 0.1),
+                    );
+                  },
+                ),
+              ),
+              GestureDetector(
+                onTapDown: (_) => _holdController.forward(),
+                onTapUp: (_) {
+                  if (_holdController.status != AnimationStatus.completed) {
+                    _holdController.reverse();
+                  }
                 },
-              ),
-            ),
-
-            // The Button itself
-            GestureDetector(
-              onTapDown: (_) => _holdController.forward(),
-              onTapUp: (_) {
-                if (_holdController.status != AnimationStatus.completed) {
-                  _holdController.reverse();
-                }
-              },
-              onTapCancel: () => _holdController.reverse(),
-              child: Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFFE6393C), // Lighter red
-                      Color(0xFF990000), // Dark red
-                    ],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                      spreadRadius: 2,
+                onTapCancel: () => _holdController.reverse(),
+                child: Container(
+                  width: 200,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFFE6393C),
+                        Color(0xFF990000),
+                      ],
                     ),
-                  ],
-                ),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'SOS',
-                        style: GoogleFonts.inter(
-                          fontSize: 48,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: 2.0,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'HOLD 3s',
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white70,
-                          letterSpacing: 1.0,
-                        ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                        spreadRadius: 2,
                       ),
                     ],
                   ),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'SOS',
+                          style: GoogleFonts.inter(
+                            fontSize: 48,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 2.0,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'HOLD 3s',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white70,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 30),
-        Text(
-          'Hold Button for Emergency',
-          style: GoogleFonts.inter(
-            color: Colors.black54,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
+            ],
           ),
-        ),
-      ],
+          Positioned(
+            bottom: 28,
+            left: 24,
+            right: 24,
+            child: Text(
+              'Press and hold for 3 seconds to alert emergency services',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                color: Colors.black54,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

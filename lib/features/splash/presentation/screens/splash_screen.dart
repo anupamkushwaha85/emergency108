@@ -16,6 +16,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
+  static const Duration _minimumSplashDuration = Duration(milliseconds: 800);
 
   // FIX: pre-computed opaque equivalents of AppPallete.error.withOpacity(x)
   // so AnimatedBuilder doesn't allocate new Color objects on every frame.
@@ -28,7 +29,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     
     // Animation Setup
     _controller = AnimationController(
-       duration: const Duration(seconds: 2), // 2 seconds animation
+       duration: const Duration(milliseconds: 1400),
        vsync: this,
     );
 
@@ -47,10 +48,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   Future<void> _checkAuthAndNavigate() async {
-    // FIX: run animation delay and SharedPreferences load in PARALLEL instead of
-    // sequentially. Total wait = max(2s, prefs_read_time) instead of sum.
+    // Keep branding visible briefly, but avoid a fixed multi-second startup wait.
     final results = await Future.wait([
-      Future.delayed(const Duration(seconds: 2)),
+      Future.delayed(_minimumSplashDuration),
       SharedPreferences.getInstance(),
     ]);
     final prefs = results[1] as SharedPreferences;
