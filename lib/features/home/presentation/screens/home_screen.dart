@@ -23,6 +23,7 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 import '../../../helping_hand/presentation/screens/helping_hand_screen.dart';
 import '../../../settings/data/preferences_repository.dart';
 import '../../../settings/presentation/settings_screen.dart';
+import '../../../settings/presentation/about_screen.dart';
 import '../../../../core/services/fcm_notification_service.dart';
 
 // New Widgets
@@ -59,6 +60,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   int _currentIndex = 0;
   List<String> _emergencyContacts = [];
   bool _hasAutoCalled = false;
+  bool _wasAutoDispatchTriggered = false;
+  bool _isSelfEmergency = false;
   StompClient? _trackingStompClient;
   // Location service stream — automatically cancels emergency if GPS is disabled
   StreamSubscription<ServiceStatus>? _locationServiceSubscription;
@@ -463,7 +466,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   }
 
   void _scheduleAutoCall() {
-    if (_emergencyContacts.isEmpty) return;
+    if (_emergencyContacts.isEmpty || !_isSelfEmergency || !_wasAutoDispatchTriggered) {
+      return;
+    }
     Timer(const Duration(seconds: 60), () async {
       if (!_isEmergencyActive || _trackingData?['status'] == 'COMPLETED') return; // Cancel if resolved
 
@@ -502,6 +507,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
 
     setState(() {
       _hasAutoCalled = false;
+      _wasAutoDispatchTriggered = false;
+      _isSelfEmergency = false;
     });
 
     // FIX: Show the ownership modal IMMEDIATELY on button tap — do not wait
@@ -536,7 +543,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
       backgroundColor: Colors.transparent,
       builder: (ctx) => OwnershipModal(
         emergencyIdNotifier: _emergencyIdNotifier,
-        onDecisionMade: () {
+        onDecisionMade: (ownership) {
+          _isSelfEmergency = ownership == 'SELF';
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Preference Saved', style: TextStyle(color: Colors.white)),
@@ -629,6 +637,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
         _countdownNotifier.value = --_countdown;
       } else {
         _timer?.cancel();
+        _wasAutoDispatchTriggered = true;
         
         // Auto-Dispatcher triggered: Close "Who needs help?" modal if open
         if (_isEmergencyActive && _statusMessage == "Emergency Created!" && mounted) {
@@ -644,6 +653,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   void _manualDispatch() async {
     if (_emergencyId == null) return;
     try {
+       _wasAutoDispatchTriggered = false;
        await ref.read(emergencyRepositoryProvider).dispatchEmergency(_emergencyId!);
        _timer?.cancel();
        
@@ -1097,6 +1107,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                  _showEmergencyContactsDialog();
                } else if (value == 'settings') {
                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                       } else if (value == 'about') {
+                         Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutScreen()));
                } else if (value == 'logout') {
                  final prefs = await SharedPreferences.getInstance();
                  await prefs.clear(); // Clear all data (token, profile, role)

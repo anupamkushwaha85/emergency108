@@ -10,7 +10,7 @@ class OwnershipModal extends ConsumerStatefulWidget {
   /// the user to make a decision. This lets the modal appear instantly while
   /// GPS + API work in the background.
   final ValueNotifier<int?> emergencyIdNotifier;
-  final VoidCallback onDecisionMade;
+  final ValueChanged<String> onDecisionMade;
   final VoidCallback? onCancel;
 
   const OwnershipModal({
@@ -35,7 +35,7 @@ class _OwnershipModalState extends ConsumerState<OwnershipModal> {
     try {
       await ref.read(emergencyRepositoryProvider).setOwnership(id, ownership);
       if (mounted) {
-        widget.onDecisionMade();
+        widget.onDecisionMade(ownership);
         context.pop();
       }
     } catch (e) {

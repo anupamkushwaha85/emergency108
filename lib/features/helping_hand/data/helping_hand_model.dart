@@ -18,12 +18,25 @@ class NearbyEmergency {
   });
 
   factory NearbyEmergency.fromJson(Map<String, dynamic> json) {
+    double parseDouble(dynamic value, {double fallback = 0.0}) {
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value) ?? fallback;
+      return fallback;
+    }
+
+    final latitude = parseDouble(
+      json['latitude'] ?? json['lat'] ?? json['patientLat'],
+    );
+    final longitude = parseDouble(
+      json['longitude'] ?? json['lng'] ?? json['patientLng'],
+    );
+
     return NearbyEmergency(
       id: json['id'] ?? 0,
       type: json['type'] ?? 'Emergency',
-      latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
-      longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
-      distanceKm: (json['distanceKm'] as num?)?.toDouble() ?? 0.0,
+      latitude: latitude,
+      longitude: longitude,
+      distanceKm: parseDouble(json['distanceKm']),
       victimName: json['victimName'] ?? 'Unknown',
       status: json['status'] ?? 'CREATED',
     );

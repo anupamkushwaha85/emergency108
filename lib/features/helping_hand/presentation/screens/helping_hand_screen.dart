@@ -68,8 +68,10 @@ class _HelpingHandScreenState extends ConsumerState<HelpingHandScreen> {
       }
 
       _currentPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 5),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 5),
+        ),
       );
 
       if (_currentPosition != null) {
@@ -92,6 +94,18 @@ class _HelpingHandScreenState extends ConsumerState<HelpingHandScreen> {
   // ─── Open in-app map bottom sheet ────────────────────────────────────────────
 
   void _openMapSheet(NearbyEmergency item) {
+    final hasValidCoordinates =
+        item.latitude.abs() > 0.0001 || item.longitude.abs() > 0.0001;
+    if (!hasValidCoordinates) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Location is not available for this emergency yet. Please refresh and try again.'),
+          backgroundColor: AppPallete.error,
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
