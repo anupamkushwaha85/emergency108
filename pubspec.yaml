@@ -77,6 +77,9 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
+  # App launcher icon generator
+  flutter_launcher_icons: ^0.14.3
+
   # Code Generation
   riverpod_generator: ^2.4.0
   build_runner: ^2.4.9
@@ -89,6 +92,13 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: assets/images/app_icon_emergency.png
+  adaptive_icon_background: "#C70024"
+  adaptive_icon_foreground: assets/images/app_icon_emergency.png
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
