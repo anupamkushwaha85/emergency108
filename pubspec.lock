@@ -465,10 +465,9 @@ packages:
   flutter_phone_direct_caller:
     dependency: "direct main"
     description:
-      name: flutter_phone_direct_caller
-      sha256: "8f166b12391572ce5872feeac3f4b47f455ee314ef221d98ba160c296ae2fad3"
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/flutter_phone_direct_caller"
+      relative: true
+    source: path
     version: "2.2.1"
   flutter_plugin_android_lifecycle:
     dependency: transitive
