@@ -4,14 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:go_router/go_router.dart';
 import '../../data/driver_repository.dart';
 import '../../../../core/theme/app_theme.dart';
 
 class VerificationPendingView extends ConsumerStatefulWidget {
   final String verificationStatus;
+  final bool hasUploadedDocument;
+  final Future<void> Function()? onStatusRefresh;
 
-  const VerificationPendingView({super.key, required this.verificationStatus});
+  const VerificationPendingView({
+    super.key,
+    required this.verificationStatus,
+    required this.hasUploadedDocument,
+    this.onStatusRefresh,
+  });
 
   @override
   ConsumerState<VerificationPendingView> createState() => _VerificationPendingViewState();
@@ -130,19 +136,10 @@ class _VerificationPendingViewState extends ConsumerState<VerificationPendingVie
         setState(() {
            _selectedImage = null;
         });
-        
-        // Refresh the app's state to reflect the PENDING status instead of missing/rejected.
-        // The driver layout or router will fetch the new status on rebuild.
-        // An easy way to force a fresh fetch is to just pop and push the branch again, 
-        // or since it's a GoRouter setup, potentially just calling refresh() if auth provider handles it.
-        // As a safe fallback, push a quick replacement to reload the widget tree.
-        ref.invalidate(driverRepositoryProvider); // Invalidate provider if caching is used
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            // This forces a rebuild of the shell route / bottom nav ensuring a fresh status fetch
-            context.go('/driver/home'); 
-          }
-        });
+
+        if (widget.onStatusRefresh != null) {
+          await widget.onStatusRefresh!();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -162,7 +159,24 @@ class _VerificationPendingViewState extends ConsumerState<VerificationPendingVie
 
   @override
   Widget build(BuildContext context) {
-    final bool isActionRequired = widget.verificationStatus != 'PENDING' && widget.verificationStatus != 'VERIFIED';
+    final status = widget.verificationStatus.toUpperCase();
+    final isVerified = status == 'VERIFIED';
+    final isRejected = status == 'REJECTED';
+    final hasDocument = widget.hasUploadedDocument;
+    final needsInitialUpload = status == 'PENDING' && !hasDocument;
+    final isUnderReview = status == 'PENDING' && hasDocument;
+    final isActionRequired = !isVerified && !isUnderReview;
+
+    final title = isUnderReview ? 'Verification Pending' : (isActionRequired ? 'Action Required' : 'Verification Pending');
+    final description = isRejected
+      ? 'Your previous document was not approved. Please upload a clearer document to continue.'
+      : (needsInitialUpload
+        ? 'Upload your driving license or government ID to start verification.'
+        : 'Your documents are under review by the admin team. You can update documents if needed.');
+
+    final selectButtonText = isUnderReview
+      ? 'Update Documents'
+      : (needsInitialUpload ? 'Upload Documents' : 'Select Document');
 
     return Center(
       child: SingleChildScrollView(
@@ -192,7 +206,7 @@ class _VerificationPendingViewState extends ConsumerState<VerificationPendingVie
                const SizedBox(height: 24),
                
                Text(
-                 isActionRequired ? 'Action Required' : 'Verification Pending',
+                 title,
                  style: GoogleFonts.poppins(
                    color: AppTheme.black, 
                    fontSize: 24, 
@@ -204,9 +218,7 @@ class _VerificationPendingViewState extends ConsumerState<VerificationPendingVie
                const SizedBox(height: 12),
                
                Text(
-                  isActionRequired 
-                      ? "Please upload a clear photo of your driving license or state ID to proceed."
-                      : "Your account is currently under review by our administration team. Please check back shortly.",
+                  description,
                   textAlign: TextAlign.center,
                   style: GoogleFonts.inter(
                     color: Colors.black54, 
@@ -261,11 +273,11 @@ class _VerificationPendingViewState extends ConsumerState<VerificationPendingVie
                  Column(
                    crossAxisAlignment: CrossAxisAlignment.stretch,
                    children: [
-                     if (_selectedImage == null && isActionRequired)
+                     if (_selectedImage == null && !isVerified)
                        ElevatedButton.icon(
                          onPressed: _showPickerOptions,
                          icon: Icon(Icons.add_a_photo, color: AppTheme.primaryRed),
-                         label: const Text('Select Document'),
+                         label: Text(selectButtonText),
                          style: ElevatedButton.styleFrom(
                            backgroundColor: AppTheme.white, 
                            foregroundColor: AppTheme.black,
@@ -290,7 +302,7 @@ class _VerificationPendingViewState extends ConsumerState<VerificationPendingVie
                          child: const Text('Submit Document'),
                        ),
                        
-                     if (isActionRequired) ...[
+                     if (!isVerified) ...[
                        const SizedBox(height: 16),
                        const Text(
                          "Max size: 500KB\nFormats: JPG, PNG",

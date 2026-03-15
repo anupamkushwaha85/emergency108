@@ -32,6 +32,7 @@ class DriverHomeScreen extends ConsumerStatefulWidget {
 class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
   bool _isOnline = false;
   String? _verificationStatus; 
+  bool _hasUploadedVerificationDocument = false;
   bool _isLoadingInitial = true;
   // WebSocket service replaces the old _locationHeartbeatTimer
   WsLocationService? _wsLocationService;
@@ -98,7 +99,9 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
         }
       });
 
-      final verifyStatus = await ref.read(driverRepositoryProvider).getVerificationStatus();
+      final verificationInfo = await ref.read(driverRepositoryProvider).getVerificationInfo();
+      final verifyStatus = verificationInfo['verificationStatus']?.toString() ?? 'PENDING';
+      final hasDocument = verificationInfo['hasDocument'] == true;
 
       // Only call getSessionState if VERIFIED — endpoint rejects unverified drivers
       bool onlineStatus = false;
@@ -112,6 +115,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
       if (mounted) {
         setState(() {
           _verificationStatus = verifyStatus;
+          _hasUploadedVerificationDocument = hasDocument;
           // ON_TRIP drivers are "online" — they have an active mission even if the
           // getDriverStatus isOnline was previously returning false before our fix.
           _isOnline = onlineStatus || hasOngoingMission;
@@ -1351,7 +1355,9 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
                              currentPosition: _currentPosition,
                            ) 
                          : VerificationPendingView(
-                             verificationStatus: _verificationStatus ?? 'PENDING'
+                           verificationStatus: _verificationStatus ?? 'PENDING',
+                           hasUploadedDocument: _hasUploadedVerificationDocument,
+                           onStatusRefresh: _fetchInitialStatus,
                            )),
                ),
                

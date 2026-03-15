@@ -191,14 +191,33 @@ class DriverRepository {
   // 6. Get Verification Status
   Future<String> getVerificationStatus() async {
     try {
+      final info = await getVerificationInfo();
+      return info['verificationStatus']?.toString() ?? 'PENDING';
+    } catch (e) {
+      // return 'UNVERIFIED'; // Default if error or not found
+      throw _handleError(e);
+    }
+  }
+
+  // 6b. Get verification details used by frontend to decide upload/review UI.
+  Future<Map<String, dynamic>> getVerificationInfo() async {
+    try {
       final token = await _getToken();
       final response = await _dio.get(
         '/driver/verification-status',
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
-      return response.data['verificationStatus'].toString();
+
+      final dynamic rawStatus = response.data['verificationStatus'];
+      final dynamic rawDocument = response.data['documentUrl'];
+      final documentUrl = rawDocument?.toString() ?? '';
+
+      return {
+        'verificationStatus': rawStatus?.toString() ?? 'PENDING',
+        'documentUrl': documentUrl,
+        'hasDocument': documentUrl.trim().isNotEmpty,
+      };
     } catch (e) {
-      // return 'UNVERIFIED'; // Default if error or not found
       throw _handleError(e);
     }
   }
