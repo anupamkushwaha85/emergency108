@@ -1,10 +1,10 @@
-group 'com.yanisalfian.flutterphonedirectcaller'
-version '1.0-SNAPSHOT'
-
 plugins {
     id 'com.android.library'
     id 'org.jetbrains.kotlin.android'
 }
+
+group 'com.yanisalfian.flutterphonedirectcaller'
+version '1.0-SNAPSHOT'
 
 android {
     namespace "com.yanisalfian.flutterphonedirectcaller"
