@@ -184,11 +184,12 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       // Check profile completion status
       final prefs = await SharedPreferences.getInstance();
       final isProfileComplete = prefs.getBool('is_profile_complete') ?? false;
+      final actualRole = (prefs.getString('user_role') ?? 'PUBLIC').toUpperCase();
 
       if (!mounted) return;
 
       if (isProfileComplete) {
-        if (widget.role == 'DRIVER') {
+        if (actualRole == 'DRIVER') {
           context.go('/driver-home');
         } else {
           context.go('/home');

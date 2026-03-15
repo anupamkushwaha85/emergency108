@@ -18,7 +18,8 @@ import '../../../auth/data/auth_repository.dart';
 import '../../../emergency/presentation/widgets/ownership_modal.dart';
 import '../../../ai_doctor/presentation/screens/ai_first_aid_screen.dart';
 import '../../../helping_hand/data/helping_hand_repository.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:flutter_contacts/flutter_contacts.dart';
 import '../../../helping_hand/presentation/screens/helping_hand_screen.dart';
 import '../../../settings/data/preferences_repository.dart';
@@ -62,6 +63,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   bool _hasAutoCalled = false;
   bool _wasAutoDispatchTriggered = false;
   bool _isSelfEmergency = false;
+  bool _isRestoringEmergency = true;
+  bool _isCreatingEmergency = false;
+  bool _isManualDispatching = false;
   int _helpingHandRefreshVersion = 0;
   StompClient? _trackingStompClient;
   // Location service stream — automatically cancels emergency if GPS is disabled
@@ -72,6 +76,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     super.initState();
     _loadContacts();
     _checkProfileStatus();
+    unawaited(_restoreActiveEmergencySession());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_startHelpingHandService());
     });
@@ -241,6 +246,58 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   Future<void> _saveContacts() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('emergency_contacts', _emergencyContacts);
+  }
+
+  Future<void> _persistActiveEmergencyId(int emergencyId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('active_emergency_id', emergencyId);
+  }
+
+  Future<void> _clearPersistedActiveEmergencyId() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('active_emergency_id');
+  }
+
+  Future<void> _restoreActiveEmergencySession() async {
+    try {
+      final emergencyRepo = ref.read(emergencyRepositoryProvider);
+      final active = await emergencyRepo.getMyActiveEmergency();
+
+      if (active == null) {
+        await _clearPersistedActiveEmergencyId();
+        return;
+      }
+
+      final rawId = active['id'];
+      final emergencyId = rawId is int ? rawId : int.tryParse(rawId.toString());
+      if (emergencyId == null) {
+        await _clearPersistedActiveEmergencyId();
+        return;
+      }
+
+      _isSelfEmergency = (active['emergencyFor']?.toString() ?? 'UNKNOWN') == 'SELF';
+      _emergencyIdNotifier.value = emergencyId;
+      await _persistActiveEmergencyId(emergencyId);
+
+      if (!mounted) return;
+      setState(() {
+        _isEmergencyActive = true;
+        _emergencyId = emergencyId;
+        _statusMessage = 'Restoring your active emergency...';
+        _countdown = 0;
+      });
+      _countdownNotifier.value = 0;
+
+      // Pull latest tracking immediately, then keep listening on STOMP.
+      await _fetchInitialTrackingData(emergencyId);
+      _pollStatus();
+    } catch (e) {
+      debugPrint('⚠️ Could not restore active emergency session: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isRestoringEmergency = false);
+      }
+    }
   }
 
   void _showEmergencyContactsDialog() {
@@ -490,15 +547,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
       final parts = _emergencyContacts.first.split('|');
       if (parts.length > 1) {
         final cleanNumber = parts[1].replaceAll(RegExp(r'[^\d+]'), '');
-        final Uri url = Uri.parse('tel:$cleanNumber');
-        if (await canLaunchUrl(url)) {
-          await launchUrl(url);
+        final permission = await ph.Permission.phone.request();
+        if (!permission.isGranted) {
+          debugPrint('⚠️ CALL_PHONE permission denied. Unable to auto-call emergency contact.');
+          return;
         }
+        await FlutterPhoneDirectCaller.callNumber(cleanNumber);
       }
     });
   }
 
   void _createEmergency() async {
+    if (_isEmergencyActive || _isCreatingEmergency || _isRestoringEmergency) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('An emergency is already active. Please complete or cancel it first.'),
+          backgroundColor: AppPallete.error,
+        ),
+      );
+      return;
+    }
+    _isCreatingEmergency = true;
+
     // GUARD: Location must be available before creating an emergency.
     // Dispatching with hardcoded coordinates would send the ambulance to the
     // wrong city — block and show a clear actionable dialog instead.
@@ -506,6 +576,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     if (!serviceEnabled) {
       if (!mounted) return;
       _showLocationRequiredDialog(openSettings: false);
+      _isCreatingEmergency = false;
       return;
     }
     LocationPermission locPermission = await Geolocator.checkPermission();
@@ -517,6 +588,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
       if (!mounted) return;
       _showLocationRequiredDialog(
           openSettings: locPermission == LocationPermission.deniedForever);
+      _isCreatingEmergency = false;
       return;
     }
 
@@ -615,16 +687,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
         lat: lat,
         lng: lng,
       );
+      final createdEmergencyId = result['id'] is int
+          ? result['id'] as int
+          : int.tryParse(result['id'].toString());
+      if (createdEmergencyId == null) {
+        throw Exception('Invalid emergency id from server');
+      }
 
       if (!mounted) return;
 
       setState(() {
-        _emergencyId = result['id'];
+        _emergencyId = createdEmergencyId;
       });
+      await _persistActiveEmergencyId(createdEmergencyId);
       // Notify the already-open OwnershipModal so buttons become tappable.
-      _emergencyIdNotifier.value = result['id'];
+      _emergencyIdNotifier.value = createdEmergencyId;
 
       _startCountdown();
+      _isCreatingEmergency = false;
     } catch (e) {
       // Step 4 — API failed: undo the optimistic UI and close the modal.
       if (!mounted) return;
@@ -640,6 +720,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString()), backgroundColor: AppPallete.error),
       );
+      _isCreatingEmergency = false;
     }
   }
 
@@ -666,7 +747,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   }
   
   void _manualDispatch() async {
-    if (_emergencyId == null) return;
+    if (_emergencyId == null || _isManualDispatching) return;
+    _isManualDispatching = true;
     try {
        _wasAutoDispatchTriggered = false;
        await ref.read(emergencyRepositoryProvider).dispatchEmergency(_emergencyId!);
@@ -683,6 +765,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
        _pollStatus();
     } catch (e) {
        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+     } finally {
+       _isManualDispatching = false;
     }
   }
 
@@ -793,6 +877,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Emergency Cancelled'), backgroundColor: AppPallete.grey),
       );
+      await _clearPersistedActiveEmergencyId();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
@@ -901,6 +986,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
 
                   if (status == 'COMPLETED') {
                     _trackingStompClient?.deactivate();
+                    unawaited(_clearPersistedActiveEmergencyId());
                     // Let the tracking view render the COMPLETED timeline step
                     // fully before the dialog blocks the screen.
                     Future.delayed(const Duration(seconds: 3), () {
@@ -909,6 +995,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                   } else if (status == 'CANCELLED') {
                     // Admin cancelled the emergency
                     _trackingStompClient?.deactivate();
+                    unawaited(_clearPersistedActiveEmergencyId());
                     final cancelledBy = (data['cancelledBy'] as String?)
                         ?.isNotEmpty == true
                         ? data['cancelledBy'] as String
@@ -936,7 +1023,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   /// Performs a one-off REST fetch to get the latest tracking snapshot
   /// immediately when tracking starts — avoids blank screen while waiting
   /// for the first STOMP broadcast (which only arrives on next GPS heartbeat).
-  void _fetchInitialTrackingData(int emergencyId) async {
+  Future<void> _fetchInitialTrackingData(int emergencyId) async {
     try {
       final data = await ref.read(emergencyRepositoryProvider).trackEmergency(emergencyId);
       if (mounted && _emergencyId == emergencyId) {
@@ -969,6 +1056,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
       _currentIndex = 0;
     });
     _countdownNotifier.value = 0;
+    unawaited(_clearPersistedActiveEmergencyId());
 
     showDialog(
       context: context,
@@ -1013,6 +1101,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                  _statusMessage = null;
                  _countdown = 0;
                });
+               unawaited(_clearPersistedActiveEmergencyId());
             },
             child: const Text('Close'),
           ),
@@ -1044,6 +1133,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                       switchOutCurve: Curves.easeInCubic,
                       child: _isEmergencyActive
                         ? _buildActiveState()
+                        : _isRestoringEmergency
+                            ? const Center(
+                                child: CircularProgressIndicator(color: AppPallete.primary),
+                              )
                         : SosActivationButton(
                             key: const ValueKey('sos_btn'),
                             onEmergencyTriggered: _createEmergency,

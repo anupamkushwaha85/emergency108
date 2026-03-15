@@ -116,6 +116,30 @@ class EmergencyRepository {
     }
   }
 
+  Future<Map<String, dynamic>?> getMyActiveEmergency() async {
+    try {
+      final token = await _getToken();
+      final response = await _dio.get(
+        '/emergencies/my-active',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      if (response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      }
+      if (response.data is Map) {
+        return Map<String, dynamic>.from(response.data as Map);
+      }
+      return null;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 204 || e.response?.statusCode == 404) {
+        return null;
+      }
+      throw _handleError(e);
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   Future<String> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth_token');
@@ -126,7 +150,14 @@ class EmergencyRepository {
   Exception _handleError(dynamic error) {
     if (error is DioException) {
       if (error.response != null) {
-        return Exception(error.response?.data['message'] ?? 'API Error');
+        final data = error.response?.data;
+        if (data is Map && data['message'] != null) {
+          return Exception(data['message'].toString());
+        }
+        if (data is String && data.isNotEmpty) {
+          return Exception(data);
+        }
+        return Exception('API Error');
       }
       return Exception('Network Error: ${error.message}');
     }

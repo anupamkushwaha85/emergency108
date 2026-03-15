@@ -45,6 +45,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
   // Mission State
   Map<String, dynamic>? _activeAssignment;
   String _missionStatus = 'IDLE'; 
+  int? _pendingAssignmentEmergencyId;
+  bool _isAssignmentDecisionInProgress = false;
 
   @override
   void initState() {
@@ -88,6 +90,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
         if (!mounted) return;
         final action = message.data['action'];
         if (action == 'NEW_EMERGENCY') {
+          if (_activeAssignment != null) return;
           final assignment = await ref.read(driverRepositoryProvider).getAssignedEmergency();
           if (assignment != null && mounted) {
             _handleAssignmentData(assignment);
@@ -676,6 +679,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
            final assigned = data['assigned'] ?? false;
            
            if (assigned == true) {
+             if (_activeAssignment != null) return;
              final emergencyData = data['emergency'];
              final assignment = {
                'emergency': emergencyData,
@@ -738,6 +742,9 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
     final String type = (emergencyData['type'] ?? 'EMERGENCY').toString();
     final String severity = (emergencyData['severity'] ?? 'HIGH').toString();
     final int emergencyId = emergencyData['id'] as int? ?? 0;
+    if (_activeAssignment != null) return;
+    if (emergencyId != 0 && _pendingAssignmentEmergencyId == emergencyId) return;
+    _pendingAssignmentEmergencyId = emergencyId;
     final String? patientName = emergencyData['patientName']?.toString();
     final String? patientPhone = emergencyData['patientPhone']?.toString();
 
@@ -1017,7 +1024,11 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
           ),
         );
       },
-    );
+    ).then((_) {
+      if (_pendingAssignmentEmergencyId == emergencyId) {
+        _pendingAssignmentEmergencyId = null;
+      }
+    });
   }
 
   Widget _buildChip(IconData icon, String label, Color bg, Color fg) {
@@ -1047,6 +1058,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
 
 
   Future<void> _acceptRequest(Map<String, dynamic> assignment) async {
+    if (_isAssignmentDecisionInProgress) return;
+    _isAssignmentDecisionInProgress = true;
     try {
       int emergencyId = assignment['emergency']['id'];
       await ref.read(driverRepositoryProvider).acceptEmergency(emergencyId);
@@ -1062,14 +1075,22 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      _isAssignmentDecisionInProgress = false;
+      _pendingAssignmentEmergencyId = null;
     }
   }
   
   Future<void> _rejectRequest(int emergencyId) async {
+    if (_isAssignmentDecisionInProgress) return;
+    _isAssignmentDecisionInProgress = true;
     try {
       await ref.read(driverRepositoryProvider).rejectEmergency(emergencyId);
     } catch (e) {
        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      _isAssignmentDecisionInProgress = false;
+      _pendingAssignmentEmergencyId = null;
     }
   }
 

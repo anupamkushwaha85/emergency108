@@ -65,7 +65,14 @@ class AuthRepository {
   Exception _handleError(dynamic error) {
     if (error is DioException) {
       if (error.response != null) {
-        return Exception(error.response?.data['message'] ?? 'API Error');
+        final data = error.response?.data;
+        if (data is Map && data['message'] != null) {
+          return Exception(data['message'].toString());
+        }
+        if (data is String && data.isNotEmpty) {
+          return Exception(data);
+        }
+        return Exception('API Error');
       }
       return Exception('Network Error: ${error.message}');
     }
