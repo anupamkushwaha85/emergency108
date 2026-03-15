@@ -10,6 +10,7 @@ import 'package:emergency108_app/core/theme/app_theme.dart';
 import 'package:stomp_dart_client/stomp.dart';
 import 'package:stomp_dart_client/stomp_config.dart';
 import 'package:stomp_dart_client/stomp_frame.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_pallete.dart';
 import '../../../../core/config/app_config.dart';
@@ -537,22 +538,124 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     );
   }
 
+  String _normalizePhoneNumber(String input) {
+    final trimmed = input.trim();
+    final hasPlusPrefix = trimmed.startsWith('+');
+    final digitsOnly = trimmed.replaceAll(RegExp(r'\D'), '');
+    if (digitsOnly.isEmpty) return '';
+    return hasPlusPrefix ? '+$digitsOnly' : digitsOnly;
+  }
+
+  List<String> _extractEmergencyContactNumbers() {
+    final numbers = <String>[];
+    for (final contact in _emergencyContacts) {
+      final parts = contact.split('|');
+      if (parts.length < 2) continue;
+      final normalized = _normalizePhoneNumber(parts[1]);
+      if (normalized.isNotEmpty) {
+        numbers.add(normalized);
+      }
+    }
+    return numbers;
+  }
+
+  Future<bool> _callContactWithFallback(String phoneNumber) async {
+    // Try direct call first when CALL_PHONE is granted.
+    final phonePermission = await ph.Permission.phone.request();
+    if (phonePermission.isGranted) {
+      try {
+        final directCallSuccess = await FlutterPhoneDirectCaller.callNumber(phoneNumber);
+        if (directCallSuccess == true) {
+          return true;
+        }
+        debugPrint('⚠️ Direct call returned false for $phoneNumber. Falling back to dialer.');
+      } catch (error) {
+        debugPrint('⚠️ Direct call failed for $phoneNumber: $error');
+      }
+    } else {
+      debugPrint('⚠️ CALL_PHONE permission not granted. Falling back to dialer for $phoneNumber.');
+    }
+
+    // Fallback: open the phone dialer with number prefilled.
+    final uri = Uri(scheme: 'tel', path: phoneNumber);
+    return launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _ensureAutoCallPermissionReady() async {
+    final currentStatus = await ph.Permission.phone.status;
+    if (currentStatus.isGranted) return;
+
+    final requested = await ph.Permission.phone.request();
+    if (requested.isGranted) return;
+
+    if (!mounted) return;
+
+    if (requested.isPermanentlyDenied) {
+      await showDialog(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Phone Permission Required'),
+          content: const Text(
+            'Automatic emergency contact calling needs phone permission. '
+            'Please enable it from app settings.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Not Now'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await ph.openAppSettings();
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppPallete.error),
+              child: const Text('Open Settings'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Phone permission is needed for automatic emergency calling.'),
+        backgroundColor: AppPallete.error,
+      ),
+    );
+  }
+
   void _scheduleAutoCall() {
     if (_emergencyContacts.isEmpty || !_isSelfEmergency || !_wasAutoDispatchTriggered) {
       return;
     }
+
+    // Ask permission ahead of the 60s timer so auto-calling is not blocked later.
+    unawaited(_ensureAutoCallPermissionReady());
+
     Timer(const Duration(seconds: 60), () async {
       if (!_isEmergencyActive || _trackingData?['status'] == 'COMPLETED') return; // Cancel if resolved
 
-      final parts = _emergencyContacts.first.split('|');
-      if (parts.length > 1) {
-        final cleanNumber = parts[1].replaceAll(RegExp(r'[^\d+]'), '');
-        final permission = await ph.Permission.phone.request();
-        if (!permission.isGranted) {
-          debugPrint('⚠️ CALL_PHONE permission denied. Unable to auto-call emergency contact.');
-          return;
-        }
-        await FlutterPhoneDirectCaller.callNumber(cleanNumber);
+      final numbers = _extractEmergencyContactNumbers();
+      if (numbers.isEmpty) {
+        debugPrint('⚠️ No valid emergency contact numbers available for auto-call.');
+        return;
+      }
+
+      bool callPlaced = false;
+      for (final number in numbers) {
+        callPlaced = await _callContactWithFallback(number);
+        if (callPlaced) break;
+      }
+
+      if (!callPlaced && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to initiate emergency contact call. Please call manually.'),
+            backgroundColor: AppPallete.error,
+          ),
+        );
       }
     });
   }
