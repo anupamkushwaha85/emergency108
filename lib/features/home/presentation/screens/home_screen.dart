@@ -27,6 +27,7 @@ import '../../../settings/data/preferences_repository.dart';
 import '../../../settings/presentation/settings_screen.dart';
 import '../../../settings/presentation/about_screen.dart';
 import '../../../../core/services/fcm_notification_service.dart';
+import '../../../../core/services/emergency_sound_service.dart';
 
 // New Widgets
 import '../widgets/sos_activation_button.dart';
@@ -245,6 +246,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     _emergencyIdNotifier.dispose();
     _countdownNotifier.dispose();
     _trackingStompClient?.deactivate();
+    unawaited(EmergencySoundService().stop());
     super.dispose();
   }
 
@@ -854,6 +856,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   }
 
   void _startCountdown() {
+    unawaited(EmergencySoundService().playDispatchTone());
+
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_countdown > 0) {
         // FIX: Update ONLY the notifier — no setState — so only the
@@ -863,6 +867,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
       } else {
         _timer?.cancel();
         _isDispatched = true;
+        unawaited(EmergencySoundService().stop());
         
         // Auto-Dispatcher triggered: Close "Who needs help?" modal if open
         if (_isEmergencyActive && _statusMessage == "Emergency Created!" && mounted) {
@@ -880,6 +885,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     _isManualDispatching = true;
     try {
        _isDispatched = true;
+       await EmergencySoundService().stop();
        await ref.read(emergencyRepositoryProvider).dispatchEmergency(_emergencyId!);
        _timer?.cancel();
        
@@ -987,6 +993,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     }
 
     try {
+      await EmergencySoundService().stop();
       await ref.read(emergencyRepositoryProvider).cancelEmergency(_emergencyId!, reason: cancellationReason);
       _timer?.cancel();
       _trackingStompClient?.deactivate();
@@ -1178,6 +1185,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     // Reset all emergency state first
     _timer?.cancel();
     _trackingStompClient?.deactivate();
+    unawaited(EmergencySoundService().stop());
     _emergencyIdNotifier.value = null;
     Navigator.of(context).popUntil((route) => route.isFirst);
     setState(() {
@@ -1226,6 +1234,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
         actions: [
           ElevatedButton(
             onPressed: () {
+               unawaited(EmergencySoundService().stop());
                context.pop();
                setState(() {
                  _isEmergencyActive = false;

@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/services/fcm_notification_service.dart';
 import '../../../../features/auth/data/auth_repository.dart';
 import '../../../../core/config/app_config.dart';
+import '../../../../core/services/emergency_sound_service.dart';
 
 // Widgets
 import '../widgets/driver_app_bar.dart';
@@ -157,6 +158,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> with Widget
     _wsLocationService?.stopTracking();
     _serviceStatusStreamSubscription?.cancel();
     _fcmForegroundSubscription?.cancel();
+    unawaited(EmergencySoundService().stop());
     super.dispose();
   }
 
@@ -764,6 +766,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> with Widget
     if (_activeAssignment != null) return;
     if (emergencyId != 0 && _pendingAssignmentEmergencyId == emergencyId) return;
     _pendingAssignmentEmergencyId = emergencyId;
+    unawaited(EmergencySoundService().playEmergencyRing());
     final String? patientName = emergencyData['patientName']?.toString();
     final String? patientPhone = emergencyData['patientPhone']?.toString();
 
@@ -1044,6 +1047,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> with Widget
         );
       },
     ).then((_) {
+      unawaited(EmergencySoundService().stop());
       if (_pendingAssignmentEmergencyId == emergencyId) {
         _pendingAssignmentEmergencyId = null;
       }
@@ -1080,6 +1084,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> with Widget
     if (_isAssignmentDecisionInProgress) return;
     _isAssignmentDecisionInProgress = true;
     try {
+      await EmergencySoundService().stop();
       int emergencyId = assignment['emergency']['id'];
       await ref.read(driverRepositoryProvider).acceptEmergency(emergencyId);
       if (mounted) {
@@ -1104,6 +1109,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> with Widget
     if (_isAssignmentDecisionInProgress) return;
     _isAssignmentDecisionInProgress = true;
     try {
+      await EmergencySoundService().stop();
       await ref.read(driverRepositoryProvider).rejectEmergency(emergencyId);
     } catch (e) {
        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
