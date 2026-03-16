@@ -29,7 +29,7 @@ class DriverHomeScreen extends ConsumerStatefulWidget {
   ConsumerState<DriverHomeScreen> createState() => _DriverHomeScreenState();
 }
 
-class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
+class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> with WidgetsBindingObserver {
   bool _isOnline = false;
   String? _verificationStatus; 
   bool _hasUploadedVerificationDocument = false;
@@ -52,8 +52,22 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _fetchInitialStatus();
     _setupFCMHandlers();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      if (_isOnline && _activeAssignment != null) {
+        // Re-fetch assignment to sync mission status after coming back from background
+        _checkMissedAssignments();
+      } else if (_isOnline && _activeAssignment == null) {
+        // Check if a new assignment arrived while app was in background
+        _checkMissedAssignments();
+      }
+    }
   }
 
   void _setupFCMHandlers() {
@@ -139,6 +153,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _wsLocationService?.stopTracking();
     _serviceStatusStreamSubscription?.cancel();
     _fcmForegroundSubscription?.cancel();

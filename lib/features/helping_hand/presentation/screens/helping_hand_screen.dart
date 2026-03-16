@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_pallete.dart';
 import '../../data/helping_hand_model.dart';
 import '../../data/helping_hand_repository.dart';
@@ -110,7 +111,10 @@ class _HelpingHandScreenState extends ConsumerState<HelpingHandScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _EmergencyMapSheet(emergency: item),
+      builder: (_) => _EmergencyMapSheet(
+        emergency: item,
+        userPosition: _currentPosition,
+      ),
     );
   }
 
@@ -585,8 +589,9 @@ class _HelpingHandScreenState extends ConsumerState<HelpingHandScreen> {
 
 class _EmergencyMapSheet extends StatefulWidget {
   final NearbyEmergency emergency;
+  final Position? userPosition;
 
-  const _EmergencyMapSheet({required this.emergency});
+  const _EmergencyMapSheet({required this.emergency, this.userPosition});
 
   @override
   State<_EmergencyMapSheet> createState() => _EmergencyMapSheetState();
@@ -600,16 +605,54 @@ class _EmergencyMapSheetState extends State<_EmergencyMapSheet> {
     widget.emergency.longitude,
   );
 
+  LatLng? get _userLatLng => widget.userPosition != null
+      ? LatLng(widget.userPosition!.latitude, widget.userPosition!.longitude)
+      : null;
+
   late final Set<Marker> _markers = {
     Marker(
       markerId: const MarkerId('emergency'),
       position: _target,
+      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
       infoWindow: InfoWindow(
         title: '${widget.emergency.type} Emergency',
         snippet: '${widget.emergency.distanceKm.toStringAsFixed(1)} km away · ${widget.emergency.victimName}',
       ),
     ),
+    if (_userLatLng != null)
+      Marker(
+        markerId: const MarkerId('my_location'),
+        position: _userLatLng!,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        infoWindow: const InfoWindow(title: 'You'),
+      ),
   };
+
+  void _fitBounds() {
+    if (_mapController == null || _userLatLng == null) return;
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        _target.latitude < _userLatLng!.latitude ? _target.latitude : _userLatLng!.latitude,
+        _target.longitude < _userLatLng!.longitude ? _target.longitude : _userLatLng!.longitude,
+      ),
+      northeast: LatLng(
+        _target.latitude > _userLatLng!.latitude ? _target.latitude : _userLatLng!.latitude,
+        _target.longitude > _userLatLng!.longitude ? _target.longitude : _userLatLng!.longitude,
+      ),
+    );
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+  }
+
+  Future<void> _openGoogleMapsNavigation() async {
+    final url = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1'
+      '&destination=${widget.emergency.latitude},${widget.emergency.longitude}'
+      '&travelmode=walking',
+    );
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
 
   @override
   void dispose() {
@@ -723,12 +766,41 @@ class _EmergencyMapSheetState extends State<_EmergencyMapSheet> {
                     zoomControlsEnabled: false,
                     onMapCreated: (ctrl) {
                       _mapController = ctrl;
-                      // Show info window automatically
+                      // Show info window and fit bounds after a short delay
                       Future.delayed(
                         const Duration(milliseconds: 600),
-                        () => ctrl.showMarkerInfoWindow(const MarkerId('emergency')),
+                        () {
+                          ctrl.showMarkerInfoWindow(const MarkerId('emergency'));
+                          _fitBounds();
+                        },
                       );
                     },
+                  ),
+                ),
+              ),
+
+              // Navigate button
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _openGoogleMapsNavigation,
+                    icon: const Icon(Icons.directions_walk_rounded, size: 20),
+                    label: const Text(
+                      'Navigate to Emergency',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF2B2B),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 4,
+                      shadowColor: const Color(0x40FF2B2B),
+                    ),
                   ),
                 ),
               ),

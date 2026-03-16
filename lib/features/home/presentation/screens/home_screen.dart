@@ -40,7 +40,7 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _controller;
   // _holdController removed (moved to SosActivationButton)
   
@@ -62,7 +62,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   int _currentIndex = 0;
   List<String> _emergencyContacts = [];
   bool _hasAutoCalled = false;
-  bool _wasAutoDispatchTriggered = false;
+  bool _isDispatched = false;
   bool _isSelfEmergency = false;
   bool _isRestoringEmergency = true;
   bool _isCreatingEmergency = false;
@@ -75,27 +75,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadContacts();
     _checkProfileStatus();
     unawaited(_restoreActiveEmergencySession());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_startHelpingHandService());
     });
-    // Background pulsing animation controller if needed for other things, 
-    // or we can remove if it was only for the old button background.
-    // Keeping it for potential background effects or safe removal later.
     _controller = AnimationController(
        vsync: this,
        duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
     // Listen for GPS being turned off while user has an active emergency.
-    // Show a warning dialog so they can re-enable or cancel.
     _locationServiceSubscription = Geolocator.getServiceStatusStream().listen((status) {
       if (status == ServiceStatus.disabled && _isEmergencyActive && mounted) {
         _handleLocationServiceDisabled();
       }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      if (_isEmergencyActive && _emergencyId != null) {
+        // Re-fetch tracking to refresh stale data after coming back from background
+        _fetchInitialTrackingData(_emergencyId!);
+      } else if (!_isEmergencyActive && !_isRestoringEmergency) {
+        // Check if an emergency was created/completed while app was in background
+        unawaited(_restoreActiveEmergencySession());
+      }
+    }
   }
 
   void _checkProfileStatus() async {
@@ -226,6 +236,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     _timer?.cancel();
     _helpingHandTimer?.cancel();
@@ -281,9 +292,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
       await _persistActiveEmergencyId(emergencyId);
 
       if (!mounted) return;
+      final status = active['status']?.toString() ?? '';
+      final isAlreadyDispatched = const {'DISPATCHED', 'IN_PROGRESS', 'AT_PATIENT', 'TO_HOSPITAL'}.contains(status);
       setState(() {
         _isEmergencyActive = true;
         _emergencyId = emergencyId;
+        _isDispatched = isAlreadyDispatched;
         _statusMessage = 'Restoring your active emergency...';
         _countdown = 0;
       });
@@ -292,6 +306,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
       // Pull latest tracking immediately, then keep listening on STOMP.
       await _fetchInitialTrackingData(emergencyId);
       _pollStatus();
+
+      // Schedule auto-call if this is a SELF emergency that was already dispatched
+      if (_isSelfEmergency && isAlreadyDispatched && !_hasAutoCalled) {
+        _hasAutoCalled = true;
+        _scheduleAutoCall();
+      }
     } catch (e) {
       debugPrint('⚠️ Could not restore active emergency session: $e');
     } finally {
@@ -627,7 +647,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   }
 
   void _scheduleAutoCall() {
-    if (_emergencyContacts.isEmpty || !_isSelfEmergency || !_wasAutoDispatchTriggered) {
+    if (_emergencyContacts.isEmpty || !_isSelfEmergency) {
       return;
     }
 
@@ -697,7 +717,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
 
     setState(() {
       _hasAutoCalled = false;
-      _wasAutoDispatchTriggered = false;
+      _isDispatched = false;
       _isSelfEmergency = false;
     });
 
@@ -735,6 +755,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
         emergencyIdNotifier: _emergencyIdNotifier,
         onDecisionMade: (ownership) {
           _isSelfEmergency = ownership == 'SELF';
+          // If dispatch already happened before user chose ownership,
+          // trigger the auto-call now that we know it's SELF.
+          if (_isSelfEmergency && _isDispatched && !_hasAutoCalled) {
+            _hasAutoCalled = true;
+            _scheduleAutoCall();
+          }
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Preference Saved', style: TextStyle(color: Colors.white)),
@@ -836,7 +862,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
         _countdownNotifier.value = --_countdown;
       } else {
         _timer?.cancel();
-        _wasAutoDispatchTriggered = true;
+        _isDispatched = true;
         
         // Auto-Dispatcher triggered: Close "Who needs help?" modal if open
         if (_isEmergencyActive && _statusMessage == "Emergency Created!" && mounted) {
@@ -853,7 +879,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     if (_emergencyId == null || _isManualDispatching) return;
     _isManualDispatching = true;
     try {
-       _wasAutoDispatchTriggered = false;
+       _isDispatched = true;
        await ref.read(emergencyRepositoryProvider).dispatchEmergency(_emergencyId!);
        _timer?.cancel();
        
@@ -1081,10 +1107,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
 
                   final status = data['status'] as String?;
 
-                  // Auto-call emergency contacts once driver is dispatched
-                  if (status == 'DISPATCHED' && !_hasAutoCalled) {
-                    _hasAutoCalled = true;
-                    _scheduleAutoCall();
+                  // Mark dispatched and trigger auto-call if SELF ownership
+                  // was already decided. If ownership decision comes later,
+                  // the onDecisionMade callback will trigger it instead.
+                  if (status == 'DISPATCHED' || status == 'IN_PROGRESS') {
+                    _isDispatched = true;
+                    if (_isSelfEmergency && !_hasAutoCalled) {
+                      _hasAutoCalled = true;
+                      _scheduleAutoCall();
+                    }
                   }
 
                   if (status == 'COMPLETED') {
