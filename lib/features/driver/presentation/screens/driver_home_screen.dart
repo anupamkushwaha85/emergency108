@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/services/fcm_notification_service.dart';
 import '../../../../features/auth/data/auth_repository.dart';
 import '../../../../core/config/app_config.dart';
+import '../../../../core/services/emergency_sound_service.dart';
 
 // Widgets
 import '../widgets/driver_app_bar.dart';
@@ -767,6 +768,9 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> with Widget
     final String? patientName = emergencyData['patientName']?.toString();
     final String? patientPhone = emergencyData['patientPhone']?.toString();
 
+    // Start continuous emergency ring
+    EmergencySoundService().playEmergencyRing();
+
     final Color severityColor = severity == 'CRITICAL'
         ? const Color(0xFFD32F2F)
         : severity == 'HIGH'
@@ -1044,6 +1048,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> with Widget
         );
       },
     ).then((_) {
+      // Stop ringing when dialog is dismissed by any means
+      EmergencySoundService().stop();
       if (_pendingAssignmentEmergencyId == emergencyId) {
         _pendingAssignmentEmergencyId = null;
       }
@@ -1079,6 +1085,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> with Widget
   Future<void> _acceptRequest(Map<String, dynamic> assignment) async {
     if (_isAssignmentDecisionInProgress) return;
     _isAssignmentDecisionInProgress = true;
+    EmergencySoundService().stop();
     try {
       int emergencyId = assignment['emergency']['id'];
       await ref.read(driverRepositoryProvider).acceptEmergency(emergencyId);
@@ -1103,6 +1110,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> with Widget
   Future<void> _rejectRequest(int emergencyId) async {
     if (_isAssignmentDecisionInProgress) return;
     _isAssignmentDecisionInProgress = true;
+    EmergencySoundService().stop();
     try {
       await ref.read(driverRepositoryProvider).rejectEmergency(emergencyId);
     } catch (e) {
