@@ -68,7 +68,6 @@ dependencies:
   permission_handler: ^12.0.1
   flutter_svg: ^2.2.3
   lottie: ^3.3.2
-  audioplayers: ^6.1.0
 
   # Firebase (for Push Notifications)
   firebase_core: ^2.24.2
@@ -119,7 +118,6 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
-    - assets/audio/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
