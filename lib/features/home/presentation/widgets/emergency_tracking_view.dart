@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
 import '../../../../core/config/app_config.dart';
 import '../../../../core/theme/app_pallete.dart';
 import '../../../location/data/map_repository.dart';
@@ -55,6 +56,38 @@ class _EmergencyTrackingViewState extends ConsumerState<EmergencyTrackingView> {
   void dispose() {
     _debounceTimer?.cancel();
     super.dispose();
+  }
+
+  /// Call the driver using their phone number from tracking data
+  Future<void> _callDriver(BuildContext context) async {
+    try {
+      final driverPhone = widget.trackingData['driverPhone'] as String?;
+      
+      if (driverPhone == null || driverPhone.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Driver phone number not available yet'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Initiate direct phone call
+      await FlutterPhoneDirectCaller.callNumber(driverPhone);
+    } catch (e) {
+      debugPrint('❌ Failed to call driver: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not call driver: ${e.toString()}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   double _metersApart(LatLng a, LatLng b) {
@@ -344,7 +377,7 @@ class _EmergencyTrackingViewState extends ConsumerState<EmergencyTrackingView> {
                           ),
                           // Call Driver Button
                           IconButton(
-                            onPressed: () {}, // TODO: Implement Call
+                            onPressed: () => _callDriver(context),
                             icon: const CircleAvatar(
                               backgroundColor: Colors.green,
                               radius: 22,

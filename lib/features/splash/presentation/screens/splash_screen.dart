@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../../core/services/auth_session_service.dart';
 import '../../../../core/theme/app_pallete.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -57,7 +58,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     
     if (!mounted) return;
 
-    final token = prefs.getString('auth_token');
+    final token = await AuthSessionService().readAuthToken();
     // Normalize role string to handle casing or whitespace issues
     final roleString = (prefs.getString('user_role') ?? 'PUBLIC').toUpperCase().trim();
     final isProfileComplete = prefs.getBool('is_profile_complete') ?? false;

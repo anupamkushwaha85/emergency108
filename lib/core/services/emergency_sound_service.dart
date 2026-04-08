@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 class EmergencySoundService {
@@ -18,8 +19,9 @@ class EmergencySoundService {
       await _player.setReleaseMode(ReleaseMode.loop);
       await _player.setVolume(1.0);
       await _player.play(AssetSource('audio/emergency_ring.wav'));
-    } catch (_) {
+    } catch (e) {
       _isPlaying = false;
+      debugPrint('❌ Error playing emergency ring: $e');
     }
   }
 
@@ -31,8 +33,9 @@ class EmergencySoundService {
       await _player.setReleaseMode(ReleaseMode.loop);
       await _player.setVolume(0.8);
       await _player.play(AssetSource('audio/dispatch_tone.wav'));
-    } catch (_) {
+    } catch (e) {
       _isPlaying = false;
+      debugPrint('❌ Error playing dispatch tone: $e');
     }
   }
 

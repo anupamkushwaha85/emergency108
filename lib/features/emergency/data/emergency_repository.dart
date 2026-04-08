@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_session_service.dart';
 
 final emergencyRepositoryProvider = Provider<EmergencyRepository>((ref) {
   return EmergencyRepository(ref.watch(apiClientProvider));
@@ -141,8 +141,7 @@ class EmergencyRepository {
   }
 
   Future<String> _getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
+    final token = await AuthSessionService().readAuthToken();
     if (token == null) throw Exception('Auth Token not found');
     return token;
   }

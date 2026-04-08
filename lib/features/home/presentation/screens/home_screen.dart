@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_pallete.dart';
 import '../../../../core/config/app_config.dart';
+import '../../../../core/services/auth_session_service.dart';
 import '../../../../features/emergency/data/emergency_repository.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../../emergency/presentation/widgets/ownership_modal.dart';
@@ -778,38 +779,52 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
 
     // Step 2 — Get GPS with MEDIUM accuracy (network-based, near-instant).
     // HIGH accuracy uses the satellite chip and takes 3–15 sec indoors.
-    double lat = 28.6139; // fallback: New Delhi
-    double lng = 77.2090;
+    double? lat;
+    double? lng;
     try {
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-      if (permission != LocationPermission.deniedForever &&
-          await Geolocator.isLocationServiceEnabled()) {
-        final position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            // FIX: Use medium accuracy (cell/WiFi triangulation) — available in
-            // < 1 second. We already showed the modal so the user is busy
-            // choosing; they won't notice this is happening in the background.
-            accuracy: LocationAccuracy.medium,
-          ),
-        ).timeout(
-          const Duration(seconds: 5),
-          onTimeout: () => Geolocator.getLastKnownPosition().then(
-            (p) => p ?? Position(
-              latitude: lat, longitude: lng,
-              timestamp: DateTime.now(), accuracy: 0,
-              altitude: 0, altitudeAccuracy: 0,
-              heading: 0, headingAccuracy: 0, speed: 0, speedAccuracy: 0,
+      final locationEnabled = await Geolocator.isLocationServiceEnabled();
+      if (permission != LocationPermission.deniedForever && locationEnabled) {
+        try {
+          final position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              // FIX: Use medium accuracy (cell/WiFi triangulation) — available in
+              // < 1 second. We already showed the modal so the user is busy
+              // choosing; they won't notice this is happening in the background.
+              accuracy: LocationAccuracy.medium,
             ),
-          ),
-        );
-        lat = position.latitude;
-        lng = position.longitude;
+          ).timeout(const Duration(seconds: 5));
+          lat = position.latitude;
+          lng = position.longitude;
+        } on TimeoutException {
+          final lastKnown = await Geolocator.getLastKnownPosition();
+          if (lastKnown != null) {
+            lat = lastKnown.latitude;
+            lng = lastKnown.longitude;
+          }
+        }
       }
     } catch (locErr) {
-      debugPrint('⚠️ Could not get GPS location, using fallback: $locErr');
+      debugPrint('⚠️ Could not get GPS location: $locErr');
+    }
+
+    if (lat == null || lng == null) {
+      if (!mounted) return;
+      _isCreatingEmergency = false;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      _emergencyIdNotifier.value = null;
+      setState(() {
+        _isEmergencyActive = false;
+        _emergencyId = null;
+        _statusMessage = null;
+        _countdown = 0;
+      });
+      _countdownNotifier.value = 0;
+      _showLocationRequiredDialog(openSettings: false);
+      return;
     }
 
     // Step 3 — Create emergency on backend with the coordinates we have.
@@ -1089,8 +1104,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     // shows right away without having to wait for the first STOMP heartbeat.
     _fetchInitialTrackingData(emergencyId);
 
-    SharedPreferences.getInstance().then((prefs) {
-      final token = prefs.getString('auth_token');
+    AuthSessionService().readAuthToken().then((token) {
       if (token == null || !mounted) return;
 
       _trackingStompClient = StompClient(
@@ -1105,8 +1119,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
               callback: (StompFrame msg) {
                 if (msg.body == null || !mounted) return;
                 try {
-                  final data = Map<String, dynamic>.from(
-                      json.decode(msg.body!) as Map);
+                  final decoded = json.decode(msg.body!);
+                  if (decoded is! Map) {
+                    throw FormatException('Tracking payload is not a JSON object');
+                  }
+                  final data = Map<String, dynamic>.from(decoded);
                   setState(() {
                     _trackingData = data;
                     _statusMessage = data['message'] as String?;

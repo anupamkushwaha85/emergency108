@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:emergency108_app/core/theme/app_theme.dart';
 import 'package:emergency108_app/features/auth/data/auth_repository.dart';
-import 'package:emergency108_app/features/auth/presentation/screens/otp_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -18,6 +19,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final TextEditingController phoneController = TextEditingController();
   bool isPhoneValid = false;
   bool isLoading = false;
+  int _otpCooldownSeconds = 0;
+  Timer? _otpCooldownTimer;
 
   // FIX: compile the regex once at class level instead of on every keystroke.
   // RegExp is not a const constructor so we use static final.
@@ -45,9 +48,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   void dispose() {
+    _otpCooldownTimer?.cancel();
     phoneController.removeListener(_validatePhone);
     phoneController.dispose();
     super.dispose();
+  }
+
+  void _startOtpCooldown([int seconds = 5]) {
+    _otpCooldownTimer?.cancel();
+    setState(() {
+      _otpCooldownSeconds = seconds;
+    });
+
+    _otpCooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (_otpCooldownSeconds <= 1) {
+        timer.cancel();
+        setState(() {
+          _otpCooldownSeconds = 0;
+        });
+      } else {
+        setState(() {
+          _otpCooldownSeconds--;
+        });
+      }
+    });
   }
 
   @override
@@ -309,26 +338,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     
                      // Send OTP Button
                     Opacity(
-                      opacity: (isPhoneValid && !isLoading) ? 1.0 : 0.5,
+                      opacity: (isPhoneValid && !isLoading && _otpCooldownSeconds == 0) ? 1.0 : 0.5,
                       child: GestureDetector(
-                        onTap: (isPhoneValid && !isLoading) ? () async {
+                        onTap: (isPhoneValid && !isLoading && _otpCooldownSeconds == 0) ? () async {
                           setState(() => isLoading = true);
                           try {
                             await ref.read(authRepositoryProvider).sendOtp(
                               phoneController.text,
                               selectedRole,
                             );
+
+                            _startOtpCooldown();
                             
                             if (!mounted) return;
                             
                             // Navigate to OTP screen
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => OtpScreen(
-                                  phone: phoneController.text,
-                                  role: selectedRole,
-                                ),
-                              ),
+                            context.push(
+                              '/otp',
+                              extra: {
+                                'phone': phoneController.text,
+                                'role': selectedRole,
+                              },
                             );
                           } catch (e) {
                             if (!mounted) return;
@@ -373,7 +403,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   ),
                                 )
                               : Text(
-                                  'Send OTP',
+                                  _otpCooldownSeconds > 0
+                                      ? 'Wait ${_otpCooldownSeconds}s'
+                                      : 'Send OTP',
                                   style: GoogleFonts.inter(
                                     fontSize: 20,
                                     fontWeight: FontWeight.w700,

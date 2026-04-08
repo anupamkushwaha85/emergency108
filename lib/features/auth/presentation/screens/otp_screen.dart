@@ -9,7 +9,6 @@ import 'package:emergency108_app/core/theme/app_theme.dart';
 import 'package:sms_autofill/sms_autofill.dart';
 import 'package:emergency108_app/features/auth/data/auth_repository.dart';
 import 'package:emergency108_app/core/services/fcm_notification_service.dart';
-import 'package:emergency108_app/features/profile/presentation/screens/profile_screen.dart';
 
 class OtpScreen extends ConsumerStatefulWidget {
   final String phone;
@@ -195,11 +194,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
           context.go('/home');
         }
       } else {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const ProfileScreen(),
-          ),
-        );
+        context.go('/profile');
       }
     } catch (e) {
       if (!mounted) return;

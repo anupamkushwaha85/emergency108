@@ -417,7 +417,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> with Widget
     // 2. Start Shift — auto-detect ambulance assigned to this driver
     final ambulanceId = await ref.read(driverRepositoryProvider).getMyAmbulanceId();
     if (ambulanceId == null) {
-      throw "No ambulance assigned to your account. Contact admin.";
+      throw Exception('No ambulance assigned to your account. Contact admin.');
     }
     await ref.read(driverRepositoryProvider).startShift(ambulanceId);
     setState(() => _isOnline = true);

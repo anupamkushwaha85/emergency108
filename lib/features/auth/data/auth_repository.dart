@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_session_service.dart';
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository(ref.watch(apiClientProvider));
 });
@@ -34,7 +36,7 @@ class AuthRepository {
       
       // Save token and user details locally
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('auth_token', token);
+      await AuthSessionService().saveAuthToken(token);
       
       // Parse flat fields
       await prefs.setString('user_name', data['name'] ?? '');
@@ -82,10 +84,9 @@ class AuthRepository {
   /// Register FCM token for push notifications
   Future<void> registerFcmToken(String fcmToken) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
+      final token = await AuthSessionService().readAuthToken();
       if (token == null) {
-        print('⚠️ Cannot register FCM token: no auth token in storage');
+        debugPrint('⚠️ Cannot register FCM token: no auth token in storage');
         return;
       }
       await _dio.post(
@@ -93,9 +94,9 @@ class AuthRepository {
         data: {'fcmToken': fcmToken},
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
-      print('✅ FCM token registered successfully');
+      debugPrint('✅ FCM token registered successfully');
     } catch (e) {
-      print('❌ Failed to register FCM token: $e');
+      debugPrint('❌ Failed to register FCM token: $e');
       // Don't throw - this shouldn't block login
     }
   }

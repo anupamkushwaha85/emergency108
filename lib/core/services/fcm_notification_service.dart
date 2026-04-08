@@ -166,4 +166,11 @@ class FCMNotificationService {
       debugPrint('❌ Failed to unsubscribe from topic $topic: $e');
     }
   }
+
+  /// Dispose the FCM service and close all streams
+  /// Call this when the app is shutting down to prevent memory leaks
+  void dispose() {
+    _foregroundMessageController.close();
+    debugPrint('✅ FCM service disposed');
+  }
 }

@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stomp_dart_client/stomp.dart';
 import 'package:stomp_dart_client/stomp_config.dart';
 import 'package:stomp_dart_client/stomp_frame.dart';
 import 'dart:convert';
+import '../../../../core/services/auth_session_service.dart';
 
 /// WebSocket-based location service for the driver app.
 ///
@@ -55,8 +55,7 @@ class WsLocationService {
     if (_isTracking) return;
     _isTracking = true;
 
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
+    final token = await AuthSessionService().readAuthToken();
     if (token == null) {
       debugPrint('🔴 [WsLocationService] No auth token — cannot connect');
       return;
@@ -119,8 +118,13 @@ class WsLocationService {
         destination: '/topic/driver/$extractedDriverId/assignments',
         callback: (StompFrame frame) {
           if (frame.body != null) {
-            debugPrint('📥 [WsLocationService] Received assignment update: ${frame.body}');
-            onAssignmentUpdate?.call(frame.body!);
+            try {
+              final decoded = json.decode(frame.body!);
+              debugPrint('📥 [WsLocationService] Received assignment update: ${frame.body}');
+              onAssignmentUpdate?.call(decoded is String ? decoded : json.encode(decoded));
+            } catch (e) {
+              debugPrint('🔴 [WsLocationService] Assignment payload parse error: $e');
+            }
           }
         },
       );
