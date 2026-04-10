@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'dart:async';
+import 'dart:ui';
 import 'core/theme/app_theme.dart';
 import 'core/routing/app_router.dart';
 import 'core/services/fcm_notification_service.dart';
@@ -16,34 +18,52 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  
-  // Lock orientation to Portrait Only
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  // Style system UI overlays to match the app design
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.white,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+      Zone.current.handleUncaughtError(
+        details.exception,
+        details.stack ?? StackTrace.current,
+      );
+    };
 
-  // Tune image cache for smoother rendering of map tiles / assets
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 100 << 20; // 100 MB
+    PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+      Zone.current.handleUncaughtError(error, stack);
+      return true;
+    };
 
-  // Initialize Firebase
-  await Firebase.initializeApp();
-  
-  // Setup background message handler
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  
-  runApp(const ProviderScope(child: MyApp()));
+    // Lock orientation to Portrait Only
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+
+    // Style system UI overlays to match the app design
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.white,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+    );
+
+    // Tune image cache for smoother rendering of map tiles / assets
+    PaintingBinding.instance.imageCache.maximumSizeBytes = 100 << 20; // 100 MB
+
+    // Initialize Firebase
+    await Firebase.initializeApp();
+
+    // Setup background message handler
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+    runApp(const ProviderScope(child: MyApp()));
+  }, (Object error, StackTrace stack) {
+    debugPrint('Uncaught app error: $error');
+    debugPrintStack(stackTrace: stack);
+  });
 }
 
 class MyApp extends ConsumerWidget {
