@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_pallete.dart';
 import '../../../../core/config/app_config.dart';
 import '../../../../core/services/auth_session_service.dart';
+import '../../../../core/db/local_store.dart';
 import '../../../../features/emergency/data/emergency_repository.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../../emergency/presentation/widgets/ownership_modal.dart';
@@ -276,7 +277,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   Future<void> _restoreActiveEmergencySession() async {
     try {
       final emergencyRepo = ref.read(emergencyRepositoryProvider);
-      final active = await emergencyRepo.getMyActiveEmergency();
+      Map<String, dynamic>? active;
+      try {
+        active = await emergencyRepo.getMyActiveEmergency();
+      } catch (e) {
+        // Backend failed — try local cache saved by FCM background handler
+        debugPrint('⚠️ getMyActiveEmergency failed, attempting local cache: $e');
+        final local = LocalStore();
+        final cached = await local.getActiveEmergency();
+        if (cached != null) {
+          active = cached;
+        } else {
+          rethrow;
+        }
+      }
 
       if (active == null) {
         await _clearPersistedActiveEmergencyId();
