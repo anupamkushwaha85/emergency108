@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../db/local_store.dart';
 
 /// Service for handling Firebase Cloud Messaging push notifications
 class FCMNotificationService {
@@ -111,6 +113,28 @@ class FCMNotificationService {
     debugPrint('Title: ${message.notification?.title}');
     debugPrint('Body: ${message.notification?.body}');
     debugPrint('Data: ${message.data}');
+    try {
+      // Persist data payloads so when the app resumes we can reconcile state with server
+      final local = LocalStore();
+      if (message.data.isNotEmpty) {
+        // If the server includes an `emergency` JSON payload, prefer it
+        if (message.data.containsKey('emergency')) {
+          try {
+            final dynamic parsed = jsonDecode(message.data['emergency'] as String);
+            if (parsed is Map<String, dynamic>) {
+              await local.saveActiveEmergency(parsed);
+            }
+          } catch (_) {
+            // ignore parse errors
+          }
+        } else {
+          // Otherwise, save the raw data map
+          await local.saveActiveEmergency(Map<String, dynamic>.from(message.data));
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to persist background message: $e');
+    }
   }
 
   /// Setup notification tap handler (when app is in background/terminated)
@@ -119,6 +143,11 @@ class FCMNotificationService {
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       debugPrint('🔔 Notification tapped (app in background)');
       debugPrint('Data: ${message.data}');
+      // Persist tapped payload for resume safety then call onTap
+      try {
+        final local = LocalStore();
+        if (message.data.isNotEmpty) local.saveActiveEmergency(Map<String, dynamic>.from(message.data));
+      } catch (_) {}
       onTap(message.data);
     });
 
@@ -127,6 +156,10 @@ class FCMNotificationService {
       if (message != null) {
         debugPrint('🔔 Notification tapped (app was terminated)');
         debugPrint('Data: ${message.data}');
+        try {
+          final local = LocalStore();
+          if (message.data.isNotEmpty) local.saveActiveEmergency(Map<String, dynamic>.from(message.data));
+        } catch (_) {}
         onTap(message.data);
       }
     });
