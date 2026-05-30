@@ -9,6 +9,11 @@ import 'dart:ui';
 import 'core/theme/app_theme.dart';
 import 'core/routing/app_router.dart';
 import 'core/services/fcm_notification_service.dart';
+import 'core/config/app_config.dart';
+import 'core/services/realtime_service.dart';
+import 'features/helping_hand/data/helping_hand_repository.dart';
+import 'core/services/background_service.dart';
+import 'package:workmanager/workmanager.dart';
 
 /// Background message handler - must be top-level function
 @pragma('vm:entry-point')
@@ -56,10 +61,15 @@ void main() async {
     // Initialize Firebase
     await Firebase.initializeApp();
 
+    // Initialize background task runner
+    Workmanager().initialize(callbackDispatcher);
+    // Register periodic flush (idempotent)
+    registerPeriodicFlush();
+
     // Setup background message handler
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-    runApp(const ProviderScope(child: MyApp()));
+    runApp(const ProviderScope(child: AppInit()));
   }, (Object error, StackTrace stack) {
     debugPrint('Uncaught app error: $error');
     debugPrintStack(stackTrace: stack);
@@ -79,5 +89,58 @@ class MyApp extends ConsumerWidget {
       theme: AppTheme.lightTheme,
       routerConfig: router,
     );
+  }
+}
+
+class AppInit extends ConsumerStatefulWidget {
+  const AppInit({super.key});
+
+  @override
+  ConsumerState<AppInit> createState() => _AppInitState();
+}
+
+class _AppInitState extends ConsumerState<AppInit> with WidgetsBindingObserver {
+  RealtimeService? _realtime;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Delay connecting until first frame to ensure providers are ready
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _realtime = ref.read(realtimeServiceProvider);
+      // on connect, flush queued HelpingHand locations
+      _realtime?.addOnConnect(() async {
+        try {
+          final repo = ref.read(helpingHandRepositoryProvider);
+          await repo.flushQueuedLocations();
+        } catch (_) {}
+      });
+
+      final wsUrl = '${AppConfig.wsBaseUrl}/ws';
+      _realtime?.connect(url: wsUrl, topic: '/topic/emergency-events');
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _realtime?.disconnect();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // On resume, attempt to flush queued locations
+      final repo = ref.read(helpingHandRepositoryProvider);
+      repo.flushQueuedLocations();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const MyApp();
   }
 }
